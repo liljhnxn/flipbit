@@ -133,11 +133,13 @@ export const FLIPBIT_ABI = [
 ] as const;
 
 /**
- * Default or configured contract address
+ * Verified FlipBit Smart Contract deployed on Botchain Mainnet (Chain ID 677)
+ * Explorer: https://scan.botchain.ai/address/0x01D9a4Dd82c0a225454F620631332187464643fF
  */
-export const DEFAULT_CONTRACT_ADDRESS: Address =
-  (process.env.NEXT_PUBLIC_FLIPBIT_CONTRACT_ADDRESS as Address) ||
+export const BOTCHAIN_MAINNET_CONTRACT_ADDRESS: Address =
   "0x01D9a4Dd82c0a225454F620631332187464643fF";
+
+export const DEFAULT_CONTRACT_ADDRESS: Address = BOTCHAIN_MAINNET_CONTRACT_ADDRESS;
 
 export enum CoinSide {
   Heads = 0,

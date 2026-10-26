@@ -23,6 +23,8 @@ import {
   LogOut,
   ChevronRight,
   ShieldAlert,
+  Copy,
+  Check,
 } from "lucide-react";
 import { botchain } from "@/config/chains";
 import { FLIPBIT_ABI, DEFAULT_CONTRACT_ADDRESS, CoinSide } from "@/config/contract";
@@ -55,6 +57,17 @@ export default function FlipBitPage() {
 
   // Visual coin display side: null = ?, 0 = Heads, 1 = Tails
   const [currentDisplayedSide, setCurrentDisplayedSide] = useState<CoinSide | null>(null);
+
+  // Address copy feedback state
+  const [copied, setCopied] = useState<boolean>(false);
+
+  const copyToClipboard = (text: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const isValidAddress = isAddress(contractAddress) && contractAddress !== "0x0000000000000000000000000000000000000000";
   const isCorrectNetwork = chainId === botchain.id;
@@ -233,7 +246,7 @@ export default function FlipBitPage() {
       {/* TOP ANNOUNCEMENT BAR AT THE FRONT OF THE INTERFACE */}
       <div className="relative z-20 bg-slate-950/95 border-b border-emerald-900/40 backdrop-blur-md px-4 py-2">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-wrap justify-center">
             <img
               src="/botchain-logo.png"
               alt="BOT Chain Logo"
@@ -242,10 +255,28 @@ export default function FlipBitPage() {
             <span className="text-slate-300 font-medium">
               Running on <strong className="text-emerald-400 font-semibold">BOT Chain Mainnet</strong> (Chain ID 677)
             </span>
-            <span className="text-slate-600 hidden md:inline">|</span>
-            <span className="text-slate-400 hidden md:inline font-mono">
-              Contract: {shortenAddress(contractAddress)}
-            </span>
+            <span className="text-slate-600 hidden sm:inline">|</span>
+            <div className="flex items-center space-x-1.5 font-mono text-emerald-400">
+              <span className="text-slate-400">Contract:</span>
+              <a
+                href={`https://scan.botchain.ai/address/${contractAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline hover:text-emerald-300 flex items-center"
+                title={`Botchain Mainnet Contract: ${contractAddress}`}
+              >
+                <span>{shortenAddress(contractAddress)}</span>
+                <ExternalLink className="w-3 h-3 ml-0.5" />
+              </a>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(contractAddress)}
+                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-emerald-400 transition-colors"
+                title="Copy Mainnet Contract Address"
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -418,13 +449,74 @@ export default function FlipBitPage() {
         )}
 
         {/* HEADING SECTION */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mb-3">
             Flip the Coin
           </h1>
           <p className="text-base sm:text-lg text-slate-400 max-w-md mx-auto">
             Heads or Tails? Let the blockchain decide.
           </p>
+        </div>
+
+        {/* PROMINENT MAINNET CONTRACT BADGE ON THE MAIN INTERFACE */}
+        <div
+          id="mainnet-contract-badge"
+          className="w-full max-w-xl mb-8 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-950/50 via-slate-900/90 to-teal-950/50 border border-emerald-500/40 shadow-xl shadow-emerald-950/40 backdrop-blur-md"
+        >
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="flex items-center space-x-3 w-full sm:w-auto">
+              <div className="w-8 h-8 rounded-xl bg-[#0B1120] border border-emerald-500/50 p-1 flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
+                <img
+                  src="/botchain-logo.png"
+                  alt="BOT Chain Logo"
+                  className="w-full h-full object-contain rounded"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center space-x-2">
+                  <span className="font-bold text-white tracking-wide">Mainnet Contract</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60 uppercase">
+                    Verified
+                  </span>
+                </div>
+                <div className="mt-0.5 font-mono text-[11px] text-emerald-400 break-all sm:break-normal">
+                  {contractAddress}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 w-full sm:w-auto justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => copyToClipboard(contractAddress)}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-750 flex items-center space-x-1.5 transition-all active:scale-95 text-xs font-medium cursor-pointer"
+                title="Copy Mainnet Contract Address"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400 font-semibold">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+
+              <a
+                href={`https://scan.botchain.ai/address/${contractAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 hover:text-emerald-200 border border-emerald-800/70 flex items-center space-x-1.5 transition-all font-medium text-xs shadow-sm hover:shadow-emerald-500/20"
+                title="View on Botchain Mainnet Explorer"
+              >
+                <span>Explorer</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
         </div>
 
         {/* VIRTUAL COIN DISPLAY */}
@@ -624,8 +716,8 @@ export default function FlipBitPage() {
 
         {/* Mainnet Contract Address Reference */}
         <div className="mt-6 text-center text-xs text-slate-400">
-          <div className="inline-flex items-center flex-wrap justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800">
-            <span className="text-slate-500">FlipBit Mainnet Contract:</span>
+          <div className="inline-flex items-center flex-wrap justify-center gap-2 px-4 py-2 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span className="text-slate-400 font-medium">FlipBit Mainnet Contract:</span>
             <a
               id="mainnet-contract-link"
               href={`https://scan.botchain.ai/address/${contractAddress}`}
@@ -641,6 +733,14 @@ export default function FlipBitPage() {
               <span>{contractAddress}</span>
               <ExternalLink className="w-3 h-3 ml-0.5" />
             </a>
+            <button
+              type="button"
+              onClick={() => copyToClipboard(contractAddress)}
+              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-emerald-400 transition-colors ml-1"
+              title="Copy Mainnet Contract Address"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
           </div>
         </div>
 
