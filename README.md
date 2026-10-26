@@ -1,6 +1,6 @@
 # FlipBit 🪙
 
-**FlipBit** is a clean, minimal, and fully functioning on-chain coin-flipping Web3 decentralized application (dApp) built on the **Botchain Testnet**.
+**FlipBit** is a clean, minimal, and fully functioning on-chain coin-flipping Web3 decentralized application (dApp) built on the **Botchain Mainnet**.
 
 Users connect their Web3 wallet, trigger an on-chain transaction to flip a virtual coin, and watch the verified result (**🟡 HEADS** or **🔵 TAILS**) appear straight from the confirmed blockchain event.
 
@@ -10,11 +10,11 @@ Users connect their Web3 wallet, trigger an on-chain transaction to flip a virtu
 
 - **On-Chain Coin Flip**: Verified by a Solidity smart contract emitting `CoinFlipped` events.
 - **Pseudo-Random Outcome Generation**: Generates pseudo-random outcomes using block attributes and entropy nonces (designed strictly for entertainment and educational purposes).
-- **Botchain Testnet Integration**: Fully configured for Botchain Testnet (Chain ID `968`, RPC `https://rpc.bohr.life`, native token `BOT`).
+- **Botchain Mainnet Integration**: Fully configured for Botchain Mainnet (Chain ID `677`, RPC `https://rpc.botchain.ai`, native token `BOT`).
 - **Interactive UI**:
   - Virtual 3D coin flipping animation during pending block confirmation.
   - Distinct visual states: Initial `?`, `🟡 HEADS`, or `🔵 TAILS`.
-  - Transaction hash link to the Botchain block explorer (`https://scan.bohr.life`).
+  - Transaction hash link to the Botchain block explorer (`https://scan.botchain.ai`).
   - Real-time on-chain statistics (Total flips and connected wallet's latest result).
 - **Responsive & Minimal**: Built with a sleek dark navy theme, subtle gold and blue accents, and modern typography using Tailwind CSS.
 - **Strict Simplicity**: No external database, no centralized backend, no betting/rewards, no unnecessary bloat.
@@ -31,16 +31,19 @@ Users connect their Web3 wallet, trigger an on-chain transaction to flip a virtu
 
 ---
 
-## ⛓️ Blockchain Network Information (Botchain Testnet)
+## ⛓️ Blockchain Network Information (Botchain Mainnet)
 
 | Parameter | Value |
 | :--- | :--- |
-| **Network Name** | Botchain Testnet |
-| **Chain ID** | `968` |
+| **Network Name** | Botchain Mainnet |
+| **Chain ID** | `677` |
 | **Currency Symbol** | `BOT` |
 | **Currency Decimals**| `18` |
-| **RPC Endpoint** | `https://rpc.bohr.life` |
-| **Block Explorer** | `https://scan.bohr.life` |
+| **Total Supply** | 150 Million BOT |
+| **BOT Chain Website** | `https://botchain.ai` |
+| **BOT Chain Explorer** | `https://scan.botchain.ai` |
+| **RPC Endpoint** | `https://rpc.botchain.ai` |
+| **Deployed Contract** | [`0x01D9a4Dd82c0a225454F620631332187464643fF`](https://scan.botchain.ai/address/0x01D9a4Dd82c0a225454F620631332187464643fF) |
 
 ---
 
@@ -83,43 +86,46 @@ The test suite validates:
 
 ---
 
-## 🚢 How to Deploy the Contract to Botchain Testnet
+## 🚢 How to Deploy the Contract to Botchain Mainnet
 
 ### 1. Set Up Deployer Credentials
-Open `.env` and set your deployer private key (ensure the account has testnet `BOT` tokens for gas):
+Open `.env` and set your deployer private key (ensure the account has `BOT` tokens for gas):
 
 ```env
-BOTCHAIN_RPC_URL=https://rpc.bohr.life
+BOTCHAIN_RPC_URL=https://rpc.botchain.ai
+NEXT_PUBLIC_BOTCHAIN_RPC_URL=https://rpc.botchain.ai
 PRIVATE_KEY=your_private_key_here
 ```
 
 ### 2. Run the Deployment Script
-Run the automated deployment script targeting the Botchain network:
+Run the automated deployment script targeting the Botchain Mainnet network:
 
 ```bash
-npm run deploy:testnet
+npm run deploy:mainnet
 ```
 
 Upon successful deployment, the script outputs the deployed contract address and explorer link:
 ```text
+====================================================
 ✅ FlipBit deployed successfully!
-Contract Address: 0x...
+Contract Address: 0x01D9a4Dd82c0a225454F620631332187464643fF
 Network: botchain
-Chain ID: 968
-Explorer URL: https://scan.bohr.life/address/0x...
+Chain ID: 677
+Explorer URL: https://scan.botchain.ai/address/0x01D9a4Dd82c0a225454F620631332187464643fF
+====================================================
 ```
 
 ### 3. Verify Contract Source Code on the Block Explorer
 To verify the contract source code on Botchain Explorer:
 
 ```bash
-npm run verify:testnet <DEPLOYED_CONTRACT_ADDRESS>
+npm run verify:mainnet 0x01D9a4Dd82c0a225454F620631332187464643fF
 ```
 
-**Currently Deployed & Verified Contract**:
-- Address: [`0xC7EE088F698c1943a03Ad5516250EA3307bF5EA4`](https://scan.bohr.life/address/0xC7EE088F698c1943a03Ad5516250EA3307bF5EA4#code)
-- Verified Status: **Verified ✅**
-- Explorer Code Tab: [https://scan.bohr.life/address/0xC7EE088F698c1943a03Ad5516250EA3307bF5EA4#code](https://scan.bohr.life/address/0xC7EE088F698c1943a03Ad5516250EA3307bF5EA4#code)
+**Currently Deployed Contract**:
+- Address: [`0x01D9a4Dd82c0a225454F620631332187464643fF`](https://scan.botchain.ai/address/0x01D9a4Dd82c0a225454F620631332187464643fF)
+- Network: Botchain Mainnet (Chain ID 677)
+- Explorer Link: [https://scan.botchain.ai/address/0x01D9a4Dd82c0a225454F620631332187464643fF](https://scan.botchain.ai/address/0x01D9a4Dd82c0a225454F620631332187464643fF)
 
 ---
 
@@ -129,7 +135,7 @@ npm run verify:testnet <DEPLOYED_CONTRACT_ADDRESS>
 Add your deployed contract address to `.env`:
 
 ```env
-NEXT_PUBLIC_FLIPBIT_CONTRACT_ADDRESS=0xYourDeployedContractAddressHere
+NEXT_PUBLIC_FLIPBIT_CONTRACT_ADDRESS=0x01D9a4Dd82c0a225454F620631332187464643fF
 ```
 
 Then rebuild or restart the development server.
@@ -168,8 +174,8 @@ npm run start
    - **Framework Preset**: Next.js
    - **Root Directory**: `./`
    - **Environment Variables**:
-     - `NEXT_PUBLIC_FLIPBIT_CONTRACT_ADDRESS`: `<Your deployed contract address on Botchain>`
-     - `NEXT_PUBLIC_BOTCHAIN_RPC_URL`: `https://rpc.bohr.life`
+     - `NEXT_PUBLIC_FLIPBIT_CONTRACT_ADDRESS`: `0x01D9a4Dd82c0a225454F620631332187464643fF`
+     - `NEXT_PUBLIC_BOTCHAIN_RPC_URL`: `https://rpc.botchain.ai`
 4. Click **Deploy**.
 
 ---

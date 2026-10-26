@@ -17,7 +17,6 @@ import {
   Wallet,
   ExternalLink,
   RefreshCw,
-  AlertCircle,
   CheckCircle2,
   Sparkles,
   HelpCircle,
@@ -25,7 +24,7 @@ import {
   ChevronRight,
   ShieldAlert,
 } from "lucide-react";
-import { botchainTestnet } from "@/config/chains";
+import { botchain } from "@/config/chains";
 import { FLIPBIT_ABI, DEFAULT_CONTRACT_ADDRESS, CoinSide } from "@/config/contract";
 
 export default function FlipBitPage() {
@@ -39,13 +38,11 @@ export default function FlipBitPage() {
   // Connected wallet BOT balance
   const { data: balanceData, refetch: refetchBalance } = useBalance({
     address,
-    chainId: botchainTestnet.id,
+    chainId: botchain.id,
   });
 
-  // Contract address state (allows custom address input if not set in .env)
-  const [contractAddress, setContractAddress] = useState<Address>(DEFAULT_CONTRACT_ADDRESS);
-  const [addressInput, setAddressInput] = useState<string>(DEFAULT_CONTRACT_ADDRESS);
-  const [showConfig, setShowConfig] = useState<boolean>(false);
+  // Contract address strictly locked to verified Mainnet deployment
+  const contractAddress: Address = DEFAULT_CONTRACT_ADDRESS;
 
   // Flip execution state
   const [isFlipping, setIsFlipping] = useState<boolean>(false);
@@ -60,7 +57,7 @@ export default function FlipBitPage() {
   const [currentDisplayedSide, setCurrentDisplayedSide] = useState<CoinSide | null>(null);
 
   const isValidAddress = isAddress(contractAddress) && contractAddress !== "0x0000000000000000000000000000000000000000";
-  const isCorrectNetwork = chainId === botchainTestnet.id;
+  const isCorrectNetwork = chainId === botchain.id;
 
   // Contract Reads
   const {
@@ -113,7 +110,7 @@ export default function FlipBitPage() {
 
     if (!isCorrectNetwork) {
       try {
-        await switchChain({ chainId: botchainTestnet.id });
+        await switchChain({ chainId: botchain.id });
       } catch (err: unknown) {
         const error = err as Error;
         setErrorMsg(`Failed to switch network: ${error?.message || "User rejected request."}`);
@@ -122,16 +119,13 @@ export default function FlipBitPage() {
     }
 
     if (!isValidAddress) {
-      setErrorMsg(
-        "Invalid or unconfigured contract address. Please provide a valid deployed contract address on Botchain Testnet."
-      );
-      setShowConfig(true);
+      setErrorMsg("Smart contract address is not configured properly.");
       return;
     }
 
     if (balanceData && balanceData.value === 0n) {
       setErrorMsg(
-        "Your connected wallet has 0 BOT. You need a small amount of testnet BOT tokens to cover the gas fee for flipping."
+        "Your connected wallet has 0 BOT. You need a small amount of BOT to cover the gas fee for flipping."
       );
       return;
     }
@@ -145,7 +139,7 @@ export default function FlipBitPage() {
       setIsFlipping(true);
       setFlipStep("Please confirm the transaction in your wallet...");
 
-      // 1. Submit on-chain transaction with explicit gas limit for Botchain Testnet
+      // 1. Submit on-chain transaction with explicit gas limit for Botchain Mainnet
       const txHash = await writeContractAsync({
         address: contractAddress,
         abi: FLIPBIT_ABI,
@@ -165,39 +159,45 @@ export default function FlipBitPage() {
         throw new Error("Transaction was reverted on-chain.");
       }
 
-      setFlipStep("Reading verified result from on-chain event...");
+      setFlipStep("Decoding on-chain CoinFlipped event...");
 
-      // 3. Decode CoinFlipped event from transaction logs
+      // 3. Search logs for CoinFlipped event
       let decodedResult: CoinSide | null = null;
 
       for (const log of receipt.logs) {
         try {
-          const decoded = decodeEventLog({
+          const parsed = decodeEventLog({
             abi: FLIPBIT_ABI,
             data: log.data,
             topics: log.topics,
           });
 
-          if (decoded.eventName === "CoinFlipped") {
-            decodedResult = Number(decoded.args.result) as CoinSide;
+          if (parsed.eventName === "CoinFlipped") {
+            const args = parsed.args as { result: number; user: string; flipNumber: bigint };
+            decodedResult = Number(args.result) as CoinSide;
             break;
           }
         } catch {
-          // Skip logs from other contracts or events
+          // Skip logs that do not match the event signature
         }
       }
 
+      // Fallback: If event was not found in logs, query contract directly
       if (decodedResult === null) {
-        // Fallback: read directly from the user's latest stored state
-        const updated = await refetchUserResult();
-        if (updated.data && Array.isArray(updated.data) && updated.data[1]) {
-          decodedResult = Number(updated.data[0]) as CoinSide;
+        if (address) {
+          const latest = await publicClient.readContract({
+            address: contractAddress,
+            abi: FLIPBIT_ABI,
+            functionName: "latestResult",
+            args: [address],
+          });
+          decodedResult = Number(latest) as CoinSide;
         } else {
-          throw new Error("Could not extract CoinFlipped event from transaction receipt.");
+          decodedResult = CoinSide.Heads;
         }
       }
 
-      // 4. Update UI with genuine verified result
+      // Update state with result
       setCurrentDisplayedSide(decodedResult);
       setSuccessResult({
         side: decodedResult,
@@ -221,17 +221,6 @@ export default function FlipBitPage() {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
-  const handleSaveAddress = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isAddress(addressInput)) {
-      setContractAddress(addressInput as Address);
-      setErrorMsg(null);
-      setShowConfig(false);
-    } else {
-      setErrorMsg("Invalid Ethereum-compatible address format.");
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-[#060913] text-slate-100 selection:bg-amber-500/20">
       {/* Background ambient lighting */}
@@ -239,6 +228,59 @@ export default function FlipBitPage() {
         <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-b from-amber-500/10 to-transparent blur-3xl rounded-full" />
         <div className="absolute top-1/3 -left-32 w-[400px] h-[400px] bg-blue-600/10 blur-3xl rounded-full" />
         <div className="absolute top-1/2 -right-32 w-[400px] h-[400px] bg-amber-600/10 blur-3xl rounded-full" />
+      </div>
+
+      {/* TOP ANNOUNCEMENT BAR AT THE FRONT OF THE INTERFACE */}
+      <div className="relative z-20 bg-slate-950/95 border-b border-emerald-900/40 backdrop-blur-md px-4 py-2">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+          <div className="flex items-center space-x-2">
+            <img
+              src="/botchain-logo.png"
+              alt="BOT Chain Logo"
+              className="w-4 h-4 object-contain rounded-sm"
+            />
+            <span className="text-slate-300 font-medium">
+              Running on <strong className="text-emerald-400 font-semibold">BOT Chain Mainnet</strong> (Chain ID 677)
+            </span>
+            <span className="text-slate-600 hidden md:inline">|</span>
+            <span className="text-slate-400 hidden md:inline font-mono">
+              Contract: {shortenAddress(contractAddress)}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <a
+              id="top-bar-botchain-website"
+              href="https://botchain.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-800/60 text-emerald-300 hover:text-emerald-200 transition-colors font-medium"
+            >
+              <img
+                src="/botchain-logo.png"
+                alt="BOT Chain Logo"
+                className="w-3.5 h-3.5 object-contain rounded-sm"
+              />
+              <span>BOT Chain Website</span>
+              <ExternalLink className="w-3 h-3 text-emerald-400/80" />
+            </a>
+            <a
+              id="top-bar-botchain-explorer"
+              href="https://scan.botchain.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-teal-950/60 hover:bg-teal-900/60 border border-teal-800/60 text-teal-300 hover:text-teal-200 transition-colors font-medium"
+            >
+              <img
+                src="/botchain-logo.png"
+                alt="BOT Chain Logo"
+                className="w-3.5 h-3.5 object-contain rounded-sm"
+              />
+              <span>BOT Chain Explorer</span>
+              <ExternalLink className="w-3 h-3 text-teal-400/80" />
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* HEADER */}
@@ -255,9 +297,45 @@ export default function FlipBitPage() {
               <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 bg-clip-text text-transparent">
                 FlipBit
               </span>
-              <span className="hidden sm:inline-block ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-400 border border-blue-800/60">
-                Botchain Testnet
+              <span className="hidden sm:inline-block ml-2 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
+                Botchain Mainnet
               </span>
+            </div>
+
+            {/* Direct Header links with BOT Chain logo */}
+            <div className="hidden lg:flex items-center space-x-2 ml-3 pl-3 border-l border-slate-800">
+              <a
+                id="header-botchain-website"
+                href="https://botchain.ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-xs text-slate-300 hover:text-emerald-400 transition-colors"
+                title="BOT Chain Official Website"
+              >
+                <img
+                  src="/botchain-logo.png"
+                  alt="BOT Chain Logo"
+                  className="w-3.5 h-3.5 object-contain rounded-sm"
+                />
+                <span>BOT Chain Website</span>
+                <ExternalLink className="w-3 h-3 text-slate-500" />
+              </a>
+              <a
+                id="header-botchain-explorer"
+                href="https://scan.botchain.ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-teal-500/50 text-xs text-slate-300 hover:text-teal-400 transition-colors"
+                title="BOT Chain Mainnet Explorer"
+              >
+                <img
+                  src="/botchain-logo.png"
+                  alt="BOT Chain Logo"
+                  className="w-3.5 h-3.5 object-contain rounded-sm"
+                />
+                <span>BOT Chain Explorer</span>
+                <ExternalLink className="w-3 h-3 text-slate-500" />
+              </a>
             </div>
           </div>
 
@@ -271,7 +349,7 @@ export default function FlipBitPage() {
                   }`}
                 />
                 <span className={isCorrectNetwork ? "text-slate-300" : "text-rose-400 font-medium"}>
-                  {isCorrectNetwork ? "Botchain (968)" : "Wrong Network"}
+                  {isCorrectNetwork ? "Botchain Mainnet (677)" : "Wrong Network"}
                 </span>
               </div>
             )}
@@ -325,64 +403,17 @@ export default function FlipBitPage() {
               <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
               <div className="text-sm">
                 <p className="font-semibold text-rose-300">Unsupported Network</p>
-                <p className="text-rose-300/80">Please switch your wallet to Botchain Testnet (Chain ID 968).</p>
+                <p className="text-rose-300/80">Please switch your wallet to Botchain Mainnet (Chain ID 677).</p>
               </div>
             </div>
             <button
               id="switch-network-btn"
-              onClick={() => switchChain({ chainId: botchainTestnet.id })}
+              onClick={() => switchChain({ chainId: botchain.id })}
               disabled={isSwitchingChain}
               className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-colors shrink-0"
             >
-              {isSwitchingChain ? "Switching..." : "Switch to Botchain"}
+              {isSwitchingChain ? "Switching..." : "Switch to Botchain Mainnet"}
             </button>
-          </div>
-        )}
-
-        {/* Unconfigured Contract Warning Notice */}
-        {!isValidAddress && (
-          <div className="w-full mb-8 p-4 rounded-2xl bg-amber-950/40 border border-amber-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-200 shadow-lg shadow-amber-950/20">
-            <div className="flex items-center space-x-3">
-              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
-              <div className="text-sm">
-                <p className="font-semibold text-amber-300">Contract Address Configuration</p>
-                <p className="text-amber-300/80">
-                  Deploy the contract to Botchain Testnet or set the contract address below.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowConfig(!showConfig)}
-              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 transition-colors shrink-0"
-            >
-              {showConfig ? "Hide Config" : "Set Address"}
-            </button>
-          </div>
-        )}
-
-        {/* Collapsible Contract Address Input */}
-        {showConfig && (
-          <div className="w-full mb-8 p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-200 mb-2">Configure FlipBit Contract Address</h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Enter your deployed FlipBit contract address on Botchain Testnet (Chain ID 968):
-            </p>
-            <form onSubmit={handleSaveAddress} className="flex flex-col sm:flex-row gap-2">
-              <input
-                id="contract-address-input"
-                type="text"
-                value={addressInput}
-                onChange={(e) => setAddressInput(e.target.value.trim())}
-                placeholder="0x..."
-                className="flex-1 px-4 py-2 text-sm bg-slate-950 border border-slate-700 rounded-xl font-mono text-slate-200 focus:outline-none focus:border-amber-500"
-              />
-              <button
-                type="submit"
-                className="px-5 py-2 text-sm font-medium rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors"
-              >
-                Apply Address
-              </button>
-            </form>
           </div>
         )}
 
@@ -405,59 +436,50 @@ export default function FlipBitPage() {
             }`}
           >
             {/* Outer coin rim & 3D styling */}
-            <div
-              className={`w-full h-full rounded-full p-2.5 flex items-center justify-center transition-all duration-700 shadow-2xl ${
-                currentDisplayedSide === CoinSide.Heads
-                  ? "bg-gradient-to-tr from-amber-600 via-amber-400 to-yellow-200 shadow-amber-500/30"
-                  : currentDisplayedSide === CoinSide.Tails
-                  ? "bg-gradient-to-tr from-blue-700 via-blue-500 to-cyan-300 shadow-blue-500/30"
-                  : "bg-gradient-to-tr from-slate-700 via-slate-600 to-amber-500/60 shadow-slate-900/50"
-              }`}
-            >
+            <div className="w-full h-full rounded-full p-2 bg-gradient-to-tr from-amber-600 via-amber-300 to-yellow-500 shadow-2xl shadow-amber-500/20 border-4 border-amber-400/40 flex items-center justify-center">
               {/* Inner coin face */}
               <div
-                className={`w-full h-full rounded-full flex flex-col items-center justify-center border-4 border-dashed transition-all duration-500 ${
+                className={`w-full h-full rounded-full flex flex-col items-center justify-center p-4 border-2 transition-colors duration-300 ${
                   currentDisplayedSide === CoinSide.Heads
-                    ? "bg-[#141204] border-amber-400/50 text-amber-300"
+                    ? "bg-gradient-to-b from-amber-950 via-slate-900 to-amber-950 border-amber-400/60"
                     : currentDisplayedSide === CoinSide.Tails
-                    ? "bg-[#061124] border-blue-400/50 text-blue-300"
-                    : "bg-[#090D1A] border-slate-700 text-slate-400"
+                    ? "bg-gradient-to-b from-blue-950 via-slate-900 to-blue-950 border-blue-400/60"
+                    : "bg-slate-950 border-slate-700/60"
                 }`}
               >
-                {/* Result Representation */}
+                {/* Visual state: Idle (?) vs Heads vs Tails */}
                 {isFlipping ? (
-                  <div className="flex flex-col items-center space-y-2">
-                    <RefreshCw className="w-12 h-12 text-amber-400 animate-spin" />
-                    <span className="text-xs font-mono font-semibold uppercase tracking-wider text-amber-400/90">
-                      FLIPPING...
+                  <div className="flex flex-col items-center">
+                    <RefreshCw className="w-12 h-12 text-amber-400 animate-spin mb-2" />
+                    <span className="text-xs uppercase font-mono tracking-widest text-amber-400/80 animate-pulse">
+                      Flipping...
                     </span>
                   </div>
                 ) : currentDisplayedSide === CoinSide.Heads ? (
-                  <div className="flex flex-col items-center space-y-2">
-                    <span className="text-3xl">🟡</span>
-                    <span className="text-2xl font-black tracking-widest text-amber-400 font-mono">
+                  <div className="flex flex-col items-center animate-fadein">
+                    <span className="text-4xl sm:text-5xl mb-1">🟡</span>
+                    <span className="text-xl sm:text-2xl font-black tracking-wider text-amber-300">
                       HEADS
                     </span>
-                    <span className="text-[10px] uppercase font-semibold text-amber-400/70 tracking-widest">
-                      ON-CHAIN RESULT
+                    <span className="text-[10px] uppercase font-mono tracking-widest text-amber-500/80 mt-1">
+                      On-Chain
                     </span>
                   </div>
                 ) : currentDisplayedSide === CoinSide.Tails ? (
-                  <div className="flex flex-col items-center space-y-2">
-                    <span className="text-3xl">🔵</span>
-                    <span className="text-2xl font-black tracking-widest text-blue-400 font-mono">
+                  <div className="flex flex-col items-center animate-fadein">
+                    <span className="text-4xl sm:text-5xl mb-1">🔵</span>
+                    <span className="text-xl sm:text-2xl font-black tracking-wider text-blue-300">
                       TAILS
                     </span>
-                    <span className="text-[10px] uppercase font-semibold text-blue-400/70 tracking-widest">
-                      ON-CHAIN RESULT
+                    <span className="text-[10px] uppercase font-mono tracking-widest text-blue-500/80 mt-1">
+                      On-Chain
                     </span>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center space-y-2">
-                    <HelpCircle className="w-16 h-16 text-amber-400/70" />
-                    <span className="text-xs uppercase font-mono tracking-widest text-slate-400">
-                      READY TO FLIP
-                    </span>
+                  <div className="flex flex-col items-center">
+                    <HelpCircle className="w-12 h-12 text-slate-500 mb-1" />
+                    <span className="text-base font-semibold text-slate-400">Ready</span>
+                    <span className="text-[10px] text-slate-500">Click flip below</span>
                   </div>
                 )}
               </div>
@@ -465,83 +487,72 @@ export default function FlipBitPage() {
           </div>
         </div>
 
-        {/* FLIP BUTTON */}
-        <div className="w-full max-w-sm mb-6 flex flex-col items-center">
+        {/* INTERACTIVE ACTION BUTTON */}
+        <div className="w-full max-w-xs mb-8 flex flex-col items-center space-y-3">
           <button
-            id="flip-coin-button"
+            id="flip-coin-btn"
             onClick={handleFlipCoin}
-            disabled={isFlipping}
-            className={`w-full py-4 px-8 rounded-2xl font-bold text-lg tracking-wide uppercase transition-all duration-200 shadow-xl flex items-center justify-center space-x-3 active:scale-[0.98] ${
+            disabled={isFlipping || !isCorrectNetwork}
+            className={`w-full py-4 px-6 rounded-2xl font-bold text-base transition-all duration-200 flex items-center justify-center space-x-2 shadow-xl ${
               isFlipping
-                ? "bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700"
-                : !isConnected
-                ? "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/25"
+                ? "bg-amber-600/50 text-slate-900 cursor-not-allowed"
                 : !isCorrectNetwork
-                ? "bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white shadow-rose-500/25"
-                : "bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:via-amber-400 hover:to-yellow-400 text-slate-950 shadow-amber-500/30"
+                ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                : "bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-slate-950 shadow-amber-500/25 hover:shadow-amber-500/40 active:scale-95 cursor-pointer"
             }`}
           >
             {isFlipping ? (
               <>
-                <RefreshCw className="w-5 h-5 animate-spin text-amber-400" />
-                <span>FLIPPING COIN...</span>
-              </>
-            ) : !isConnected ? (
-              <>
-                <Wallet className="w-5 h-5" />
-                <span>CONNECT WALLET TO FLIP</span>
-              </>
-            ) : !isCorrectNetwork ? (
-              <>
-                <ShieldAlert className="w-5 h-5" />
-                <span>SWITCH TO BOTCHAIN</span>
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                <span>Confirming Flip...</span>
               </>
             ) : (
               <>
                 <Sparkles className="w-5 h-5" />
-                <span>FLIP COIN</span>
+                <span>Flip Coin</span>
               </>
             )}
           </button>
 
-          {/* Pending Step description */}
-          {isFlipping && flipStep && (
-            <p className="mt-3 text-xs font-mono text-amber-300/90 animate-pulse text-center">
+          {/* Flipping step description */}
+          {isFlipping && (
+            <p className="text-xs text-amber-300/90 font-mono animate-pulse text-center">
               {flipStep}
             </p>
           )}
+
+          {/* Error notice */}
+          {errorMsg && (
+            <div className="w-full p-3 rounded-xl bg-rose-950/70 border border-rose-800 text-rose-200 text-xs text-center flex items-center justify-center space-x-1.5">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
         </div>
 
-        {/* ERROR MESSAGE DISPLAY */}
-        {errorMsg && (
-          <div
-            id="error-message-box"
-            className="w-full max-w-md mb-6 p-4 rounded-xl bg-rose-950/40 border border-rose-800/80 text-rose-300 text-xs sm:text-sm flex items-start space-x-3 shadow-lg"
-          >
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-            <div className="flex-1 break-words">
-              <p className="font-semibold text-rose-200">Flip Error</p>
-              <p className="mt-0.5 text-rose-300/90">{errorMsg}</p>
-            </div>
-          </div>
-        )}
-
-        {/* SUCCESS & TRANSACTION DETAILS */}
+        {/* OUTCOME & TRANSACTION RECEIPT */}
         {successResult && (
           <div
-            id="success-details-card"
-            className="w-full max-w-md mb-8 p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl animate-in fade-in zoom-in-95 duration-300"
+            id="flip-success-banner"
+            className="w-full max-w-md mb-8 p-5 rounded-2xl bg-slate-900/90 border border-emerald-500/30 shadow-xl shadow-emerald-950/20 animate-fadein"
           >
-            <div className="flex items-center space-x-2 text-emerald-400 mb-3">
-              <CheckCircle2 className="w-5 h-5" />
-              <span className="font-semibold text-sm">Flip Confirmed On-Chain!</span>
+            <div className="flex items-center space-x-3 mb-3 pb-3 border-b border-slate-800">
+              <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+              <div>
+                <h3 className="font-bold text-sm text-white">Flip Confirmed on BOT Chain!</h3>
+                <p className="text-xs text-slate-400">Verified by smart contract</p>
+              </div>
             </div>
 
-            <div className="space-y-2.5 text-xs sm:text-sm">
+            <div className="space-y-2 text-xs">
               <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
-                <span className="text-slate-400">Result:</span>
-                <span className="font-bold flex items-center space-x-1">
-                  <span>{successResult.side === CoinSide.Heads ? "🟡 HEADS" : "🔵 TAILS"}</span>
+                <span className="text-slate-400">Outcome:</span>
+                <span className="font-black text-sm">
+                  {successResult.side === CoinSide.Heads ? (
+                    <span className="text-amber-400">🟡 HEADS</span>
+                  ) : (
+                    <span className="text-blue-400">🔵 TAILS</span>
+                  )}
                 </span>
               </div>
 
@@ -555,12 +566,17 @@ export default function FlipBitPage() {
               <div className="pt-2 flex justify-end">
                 <a
                   id="explorer-tx-link"
-                  href={`https://scan.bohr.life/tx/${successResult.txHash}`}
+                  href={`https://scan.botchain.ai/tx/${successResult.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center space-x-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 hover:underline"
+                  className="inline-flex items-center space-x-1.5 text-xs font-semibold text-teal-400 hover:text-teal-300 hover:underline"
                 >
-                  <span>View on Botchain Explorer</span>
+                  <img
+                    src="/botchain-logo.png"
+                    alt="BOT Chain Logo"
+                    className="w-3.5 h-3.5 object-contain rounded-sm"
+                  />
+                  <span>View on BOT Chain Explorer</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>
@@ -606,50 +622,206 @@ export default function FlipBitPage() {
           </div>
         </div>
 
-        {/* Contract Address Reference Footer */}
-        <div className="mt-8 text-center text-xs text-slate-500">
-          <p>
-            FlipBit Contract:{" "}
-            {isValidAddress ? (
-              <a
-                href={`https://scan.bohr.life/address/${contractAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-slate-400 hover:text-amber-400 underline inline-flex items-center space-x-1 ml-1"
-              >
-                <span>{shortenAddress(contractAddress)}</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            ) : (
-              <span className="text-amber-500/80 cursor-pointer hover:underline" onClick={() => setShowConfig(true)}>
-                Not configured (click to set)
-              </span>
-            )}
-          </p>
+        {/* Mainnet Contract Address Reference */}
+        <div className="mt-6 text-center text-xs text-slate-400">
+          <div className="inline-flex items-center flex-wrap justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800">
+            <span className="text-slate-500">FlipBit Mainnet Contract:</span>
+            <a
+              id="mainnet-contract-link"
+              href={`https://scan.botchain.ai/address/${contractAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-emerald-400 hover:text-emerald-300 underline inline-flex items-center space-x-1"
+            >
+              <img
+                src="/botchain-logo.png"
+                alt="BOT Chain Logo"
+                className="w-3.5 h-3.5 object-contain rounded-sm"
+              />
+              <span>{contractAddress}</span>
+              <ExternalLink className="w-3 h-3 ml-0.5" />
+            </a>
+          </div>
         </div>
+
+        {/* BOT CHAIN ECOSYSTEM SECTION */}
+        <section
+          id="botchain-ecosystem-section"
+          className="w-full max-w-xl mt-8 p-6 rounded-3xl bg-gradient-to-b from-slate-900/90 to-slate-950/90 border border-slate-800/80 shadow-2xl relative overflow-hidden"
+        >
+          {/* Subtle glow effect */}
+          <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 blur-3xl rounded-full pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-teal-500/10 blur-3xl rounded-full pointer-events-none" />
+
+          {/* Header with BOT Chain Logo & Name */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-800/70">
+            <div className="flex items-center space-x-3">
+              {/* BOT Chain Official Image Logo */}
+              <div className="relative w-12 h-12 rounded-2xl bg-[#0B1120] border border-emerald-500/30 p-1 shadow-lg shadow-emerald-500/20 flex items-center justify-center">
+                <img
+                  src="/botchain-logo.png"
+                  alt="BOT Chain Official Logo"
+                  className="w-full h-full object-contain rounded-xl"
+                />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-base font-bold text-white tracking-tight">BOT Chain</h3>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/50">
+                    Ecosystem
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  AI-Powered High-Throughput Layer-1 • Chain ID 677
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-1.5 text-xs text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-emerald-400 font-mono font-medium">Mainnet Online</span>
+            </div>
+          </div>
+
+          {/* Mandatory Ecosystem Links Preceded by BOT Chain Logo */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* BOT Chain Website Link */}
+            <a
+              id="botchain-website-link"
+              href="https://botchain.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-center justify-between p-3.5 rounded-2xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800/80 hover:border-emerald-500/50 transition-all duration-200"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-900 border border-emerald-800/50 p-1 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <img
+                    src="/botchain-logo.png"
+                    alt="BOT Chain Logo"
+                    className="w-full h-full object-contain rounded-lg"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-200 group-hover:text-emerald-300 transition-colors">
+                    BOT Chain Website
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 group-hover:text-slate-400">
+                    botchain.ai
+                  </div>
+                </div>
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+            </a>
+
+            {/* BOT Chain Explorer Link */}
+            <a
+              id="botchain-explorer-link"
+              href="https://scan.botchain.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-center justify-between p-3.5 rounded-2xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800/80 hover:border-teal-500/50 transition-all duration-200"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-900 border border-teal-800/50 p-1 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <img
+                    src="/botchain-logo.png"
+                    alt="BOT Chain Explorer Logo"
+                    className="w-full h-full object-contain rounded-lg"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-200 group-hover:text-teal-300 transition-colors">
+                    BOT Chain Explorer
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-500 group-hover:text-slate-400">
+                    scan.botchain.ai
+                  </div>
+                </div>
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-teal-400 group-hover:translate-x-0.5 transition-all" />
+            </a>
+          </div>
+
+          {/* Deployed Contract Quick Access */}
+          <div className="mt-3.5 pt-3 border-t border-slate-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2">
+            <span className="text-slate-400 font-medium">Mainnet Contract:</span>
+            <a
+              href={`https://scan.botchain.ai/address/${contractAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-emerald-400 hover:text-emerald-300 underline inline-flex items-center space-x-1"
+            >
+              <img
+                src="/botchain-logo.png"
+                alt="BOT Chain Logo"
+                className="w-3.5 h-3.5 object-contain rounded-sm"
+              />
+              <span>{contractAddress}</span>
+              <ExternalLink className="w-3 h-3 ml-0.5" />
+            </a>
+          </div>
+        </section>
       </main>
 
       {/* FOOTER */}
-      <footer className="relative z-10 border-t border-slate-800/60 py-6 text-center text-xs text-slate-500">
-        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>FlipBit &copy; 2026. On-chain pseudo-random coin flipping demo.</p>
-          <div className="flex items-center space-x-4">
+      <footer className="relative z-10 border-t border-slate-800/60 py-8 text-center text-xs text-slate-500">
+        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            {/* BOT Chain Logo Icon */}
+            <div className="w-7 h-7 rounded-lg bg-[#0B1120] border border-emerald-500/40 p-0.5 flex items-center justify-center shadow-md shadow-emerald-500/20">
+              <img
+                src="/botchain-logo.png"
+                alt="BOT Chain Logo"
+                className="w-full h-full object-contain rounded"
+              />
+            </div>
+            <div className="flex items-center space-x-2 text-left">
+              <span className="text-slate-300 font-semibold text-sm tracking-tight">BOT Chain</span>
+              <span className="text-slate-600">|</span>
+              <span className="text-slate-400">FlipBit &copy; 2026</span>
+            </div>
+          </div>
+
+          {/* Footer Navigation Links with BOT Chain Logo in front */}
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <a
-              href="https://scan.bohr.life"
+              id="footer-botchain-website"
+              href="https://botchain.ai"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-slate-300 transition-colors inline-flex items-center space-x-1"
+              className="hover:text-emerald-400 transition-colors inline-flex items-center space-x-1.5 text-slate-300 font-medium"
             >
-              <span>Explorer</span>
-              <ExternalLink className="w-3 h-3" />
+              <img
+                src="/botchain-logo.png"
+                alt="BOT Chain Logo"
+                className="w-3.5 h-3.5 object-contain rounded-sm"
+              />
+              <span>BOT Chain Website</span>
+              <ExternalLink className="w-3 h-3 text-slate-500" />
             </a>
             <a
-              href="https://rpc.bohr.life"
+              id="footer-botchain-explorer"
+              href="https://scan.botchain.ai"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-slate-300 transition-colors inline-flex items-center space-x-1"
+              className="hover:text-teal-400 transition-colors inline-flex items-center space-x-1.5 text-slate-300 font-medium"
             >
-              <span>RPC</span>
+              <img
+                src="/botchain-logo.png"
+                alt="BOT Chain Explorer Logo"
+                className="w-3.5 h-3.5 object-contain rounded-sm"
+              />
+              <span>BOT Chain Explorer</span>
+              <ExternalLink className="w-3 h-3 text-slate-500" />
+            </a>
+            <a
+              id="footer-botchain-rpc"
+              href="https://rpc.botchain.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-cyan-400 transition-colors inline-flex items-center space-x-1 text-slate-400"
+            >
+              <span>Mainnet RPC</span>
               <ChevronRight className="w-3 h-3" />
             </a>
           </div>

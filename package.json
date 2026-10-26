@@ -9,8 +9,9 @@
     "start": "next start",
     "test": "hardhat --config hardhat.config.cjs test",
     "compile": "hardhat --config hardhat.config.cjs compile",
-    "deploy:testnet": "hardhat --config hardhat.config.cjs run scripts/deploy.cjs --network botchain",
-    "verify:testnet": "hardhat --config hardhat.config.cjs verify --network botchain"
+    "deploy": "hardhat --config hardhat.config.cjs run scripts/deploy.cjs --network botchain",
+    "deploy:mainnet": "hardhat --config hardhat.config.cjs run scripts/deploy.cjs --network botchain",
+    "verify:mainnet": "hardhat --config hardhat.config.cjs verify --network botchain"
   },
   "keywords": [],
   "author": "",

@@ -22,18 +22,39 @@ async function main() {
     );
   }
 
+  const feeData = await hre.ethers.provider.getFeeData();
+  const gasPrice = feeData.gasPrice || hre.ethers.parseUnits("25", "gwei");
+  console.log("Current network gas price:", hre.ethers.formatUnits(gasPrice, "gwei"), "gwei");
+
   const FlipBit = await hre.ethers.getContractFactory("FlipBit");
-  const flipBit = await FlipBit.deploy();
+  const estimatedGas = await hre.ethers.provider.estimateGas(await FlipBit.getDeployTransaction());
+  const estimatedCost = estimatedGas * gasPrice;
+  console.log("Estimated deployment gas:", estimatedGas.toString());
+  console.log("Estimated deployment fee:", hre.ethers.formatEther(estimatedCost), "BOT");
+
+  if (balance < estimatedCost && hre.network.name !== "hardhat") {
+    throw new Error(
+      `Insufficient BOT for gas. Account balance is ${hre.ethers.formatEther(balance)} BOT, but estimated deployment cost is ${hre.ethers.formatEther(estimatedCost)} BOT. Please fund ${deployer.address} with at least ${hre.ethers.formatEther(estimatedCost)} BOT.`
+    );
+  }
+
+  // Deploy with exact gas parameters to prevent overpaying
+  const flipBit = await FlipBit.deploy({
+    gasPrice: gasPrice,
+  });
 
   await flipBit.waitForDeployment();
   const contractAddress = await flipBit.getAddress();
+
+  const network = await hre.ethers.provider.getNetwork();
+  const explorerBase = "https://scan.botchain.ai";
 
   console.log("\n====================================================");
   console.log("✅ FlipBit deployed successfully!");
   console.log("Contract Address:", contractAddress);
   console.log("Network:", hre.network.name);
-  console.log("Chain ID:", (await hre.ethers.provider.getNetwork()).chainId.toString());
-  console.log("Explorer URL:", `https://scan.bohr.life/address/${contractAddress}`);
+  console.log("Chain ID:", network.chainId.toString());
+  console.log("Explorer URL:", `${explorerBase}/address/${contractAddress}`);
   console.log("====================================================\n");
   console.log("👉 Update NEXT_PUBLIC_FLIPBIT_CONTRACT_ADDRESS in your .env or src/config/contract.ts with this address.");
 }

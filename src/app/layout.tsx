@@ -3,9 +3,9 @@ import "./globals.css";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "FlipBit - On-Chain Coin Flip on Botchain Testnet",
+  title: "FlipBit - On-Chain Coin Flip on Botchain Mainnet",
   description:
-    "FlipBit is a clean, minimal Web3 dApp for on-chain coin flipping on Botchain Testnet. Heads or Tails, verified directly by the blockchain.",
+    "FlipBit is a clean, minimal Web3 dApp for on-chain coin flipping on Botchain Mainnet (Chain ID 677). Heads or Tails, verified directly by the blockchain.",
   icons: {
     icon: "/icon.svg",
   },

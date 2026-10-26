@@ -137,7 +137,7 @@ export const FLIPBIT_ABI = [
  */
 export const DEFAULT_CONTRACT_ADDRESS: Address =
   (process.env.NEXT_PUBLIC_FLIPBIT_CONTRACT_ADDRESS as Address) ||
-  "0xC7EE088F698c1943a03Ad5516250EA3307bF5EA4";
+  "0x01D9a4Dd82c0a225454F620631332187464643fF";
 
 export enum CoinSide {
   Heads = 0,
